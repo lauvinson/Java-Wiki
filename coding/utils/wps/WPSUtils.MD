@@ -1,4 +1,5 @@
 #### WPS(POI)备忘示例，根据特殊需要自行修改
+对象属性需设置WpsColumnPosition，默认无定位不参与导出
 > 编辑日期:2019年9月2日,通过环境JDK1.8
 
 ```
@@ -14,9 +15,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.text.SimpleDateFormat;
-import java.util.Collection;
-import java.util.Date;
-import java.util.Iterator;
+import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -142,7 +141,7 @@ public class WPSUtils<T> {
         Iterator<T> it = dataset.iterator();
         int index = 0;
         T t;
-        Field[] fields;
+        Field[] fieldsUnsort;
         Field field;
         XSSFRichTextString richString;
         Pattern p = compile("^//d+(//.//d+)?$");
@@ -160,9 +159,22 @@ public class WPSUtils<T> {
             row = sheet.createRow(index);
             t = (T) it.next();
             // 利用反射，根据JavaBean属性的先后顺序，动态调用getXxx()方法得到属性值
-            fields = t.getClass().getDeclaredFields();
-            for (int i = 0; i < fields.length; i++) {
-                field = fields[i];
+            fieldsUnsort = t.getClass().getDeclaredFields();
+            Map<Integer, Field> fields = new TreeMap<>();
+            for (Field f : fieldsUnsort) {
+                boolean s = f.isAnnotationPresent(WpsColumnPosition.class);
+                if (s) {
+                    WpsColumnPosition position = f.getAnnotation(WpsColumnPosition.class);
+                    fields.put(position.position(), f);
+                }
+            }
+            //这里将map.entrySet()转换成list
+            List<Map.Entry<Integer, Field>> list = new ArrayList<>(fields.entrySet());
+            //然后通过比较器来实现排序
+            //升序排序
+            list.sort(Comparator.comparing(Map.Entry::getKey));
+            for (int i = 0; i < list.size(); i++) {
+                field = list.get(i).getValue();
                 cell = row.createCell(i);
                 cell.setCellStyle(style2);
                 fieldName = field.getName();
