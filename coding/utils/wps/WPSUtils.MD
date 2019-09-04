@@ -182,8 +182,8 @@ public class WPSUtils<T> {
                         + fieldName.substring(1);
                 try {
                     tCls = t.getClass();
-                    getMethod = tCls.getMethod(getMethodName, new Class[]{});
-                    value = getMethod.invoke(t, new Object[]{});
+                    getMethod = tCls.getMethod(getMethodName);
+                    value = getMethod.invoke(t);
                     // 判断值的类型后进行强制类型转换
                     textValue = null;
                     if (value instanceof Integer) {
@@ -204,6 +204,14 @@ public class WPSUtils<T> {
                         }
                     } else if (value instanceof Date) {
                         textValue = sdf.format((Date) value);
+                    } else if (value instanceof Enum && value.getClass().isAnnotationPresent(EnumDesc.class)) {
+                        Object o = null;
+                        try {
+                            o = value.getClass().getMethod(value.getClass().getAnnotation(EnumDesc.class).descMethod()).invoke(value);
+                        } catch (Exception e) {
+                            e.printStackTrace();
+                        }
+                        textValue = Optional.ofNullable(o).map(Object::toString).orElse("");
                     } else {
                         // 其它数据类型都当作字符串简单处理
                         if (value != null) {
