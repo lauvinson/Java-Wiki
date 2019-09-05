@@ -1,8 +1,11 @@
 #### WPS(POI)备忘示例，根据特殊需要自行修改
-对象属性需设置WpsColumnPosition，默认无定位不参与导出
+对象属性需设置@ColumnPosition，默认无定位不参与导出
+@ColumnName可指定列名
 > 编辑日期:2019年9月2日,通过环境JDK1.8
 
 ```
+package com.wangxiaobao.facedetect.utils;
+
 import org.apache.commons.lang3.StringUtils;
 import org.apache.poi.hssf.usermodel.*;
 import org.apache.poi.hssf.util.HSSFColor;
@@ -49,27 +52,7 @@ public class WPSUtils<T> {
         if (StringUtils.isEmpty(version) || EXCEL_FILE_2003.equals(version.trim())) {
             exportExcel2003(title, null, dataset, out, "yyyy-MM-dd HH:mm:ss");
         } else {
-            exportExcel2007(title, null, dataset, out, "yyyy-MM-dd HH:mm:ss");
-        }
-    }
-
-    /**
-     * <p>
-     * 导出带有头部标题行的Excel <br>
-     * 时间格式默认：yyyy-MM-dd hh:mm:ss <br>
-     * </p>
-     *
-     * @param title   表格标题
-     * @param headers 头部标题集合
-     * @param dataset 数据集合
-     * @param out     输出流
-     * @param version 2003 或者 2007，不传时默认生成2003版本
-     */
-    public void exportExcel(String title, String[] headers, Collection<T> dataset, OutputStream out, String version) {
-        if (StringUtils.isBlank(version) || EXCEL_FILE_2003.equals(version.trim())) {
-            exportExcel2003(title, headers, dataset, out, "yyyy-MM-dd HH:mm:ss");
-        } else {
-            exportExcel2007(title, headers, dataset, out, "yyyy-MM-dd HH:mm:ss");
+            exportExcel2007(title, dataset, out, "yyyy-MM-dd HH:mm:ss");
         }
     }
 
@@ -80,14 +63,48 @@ public class WPSUtils<T> {
      * </p>
      *
      * @param title   表格标题名
-     * @param headers 表格头部标题集合
      * @param dataset 需要显示的数据集合,集合中一定要放置符合JavaBean风格的类的对象。此方法支持的
      *                JavaBean属性的数据类型有基本数据类型及String,Date
      * @param out     与输出设备关联的流对象，可以将EXCEL文档导出到本地文件或者网络中
      * @param pattern 如果有时间数据，设定输出格式。默认为"yyyy-MM-dd hh:mm:ss"
      */
     @SuppressWarnings({"unchecked", "rawtypes"})
-    public void exportExcel2007(String title, String[] headers, Collection<T> dataset, OutputStream out, String pattern) {
+    public void exportExcel2007(String title, Collection<T> dataset, OutputStream out, String pattern) {
+        //数据格式声明同一类型对象，抽其一个生成取值模板
+        Optional<T> flagOptional = dataset.stream().findAny();
+        if (!flagOptional.isPresent()) {
+            return;
+        }
+        T flag = flagOptional.get();
+        //获取列名与取值模板
+        Field[] fieldsUnsort = flag.getClass().getDeclaredFields();
+        Map<Integer, Field> fields = new TreeMap<>();
+        for (Field f : fieldsUnsort) {
+            if (f.isAnnotationPresent(ColumnPosition.class)) {
+                ColumnPosition position = f.getAnnotation(ColumnPosition.class);
+                fields.put(position.value(), f);
+            }
+        }
+        //这里将map.entrySet()转换成list
+        List<Map.Entry<Integer, Field>> sortedColumn = new ArrayList<>(fields.entrySet());
+        sortedColumn.sort(Comparator.comparing(Map.Entry::getKey));
+        Field field;
+        String fieldName;
+        String[] headers = new String[sortedColumn.size()];
+        String[] methods = new String[sortedColumn.size()];
+        for (int i = 0; i < sortedColumn.size(); i++) {
+            field = sortedColumn.get(i).getValue();
+            String name;
+            if (field.isAnnotationPresent(ColumnName.class)) {
+                name = field.getAnnotation(ColumnName.class).value();
+            } else {
+                name = field.getName();
+            }
+            headers[i] = name;
+            fieldName = field.getName();
+            methods[i] = "get" + fieldName.substring(0, 1).toUpperCase()
+                    + fieldName.substring(1);
+        }
         // 声明一个工作薄
         XSSFWorkbook workbook = new XSSFWorkbook();
         // 生成一个表格
@@ -141,13 +158,9 @@ public class WPSUtils<T> {
         Iterator<T> it = dataset.iterator();
         int index = 0;
         T t;
-        Field[] fieldsUnsort;
-        Field field;
         XSSFRichTextString richString;
         Pattern p = compile("^//d+(//.//d+)?$");
         Matcher matcher;
-        String fieldName;
-        String getMethodName;
         XSSFCell cell;
         Class tCls;
         Method getMethod;
@@ -158,31 +171,13 @@ public class WPSUtils<T> {
             index++;
             row = sheet.createRow(index);
             t = (T) it.next();
-            // 利用反射，根据JavaBean属性的先后顺序，动态调用getXxx()方法得到属性值
-            fieldsUnsort = t.getClass().getDeclaredFields();
-            Map<Integer, Field> fields = new TreeMap<>();
-            for (Field f : fieldsUnsort) {
-                boolean s = f.isAnnotationPresent(WpsColumnPosition.class);
-                if (s) {
-                    WpsColumnPosition position = f.getAnnotation(WpsColumnPosition.class);
-                    fields.put(position.position(), f);
-                }
-            }
-            //这里将map.entrySet()转换成list
-            List<Map.Entry<Integer, Field>> list = new ArrayList<>(fields.entrySet());
-            //然后通过比较器来实现排序
-            //升序排序
-            list.sort(Comparator.comparing(Map.Entry::getKey));
-            for (int i = 0; i < list.size(); i++) {
-                field = list.get(i).getValue();
+            for (int i = 0; i < sortedColumn.size(); i++) {
+                field = sortedColumn.get(i).getValue();
                 cell = row.createCell(i);
                 cell.setCellStyle(style2);
-                fieldName = field.getName();
-                getMethodName = "get" + fieldName.substring(0, 1).toUpperCase()
-                        + fieldName.substring(1);
                 try {
                     tCls = t.getClass();
-                    getMethod = tCls.getMethod(getMethodName);
+                    getMethod = tCls.getMethod(methods[i]);
                     value = getMethod.invoke(t);
                     // 判断值的类型后进行强制类型转换
                     textValue = null;
@@ -339,8 +334,8 @@ public class WPSUtils<T> {
                         + fieldName.substring(1);
                 try {
                     tCls = t.getClass();
-                    getMethod = tCls.getMethod(getMethodName, new Class[]{});
-                    value = getMethod.invoke(t, new Object[]{});
+                    getMethod = tCls.getMethod(getMethodName);
+                    value = getMethod.invoke(t);
                     // 判断值的类型后进行强制类型转换
                     textValue = null;
                     if (value instanceof Integer) {
@@ -377,15 +372,7 @@ public class WPSUtils<T> {
                             cell.setCellValue(richString);
                         }
                     }
-                } catch (SecurityException e) {
-                    e.printStackTrace();
-                } catch (NoSuchMethodException e) {
-                    e.printStackTrace();
-                } catch (IllegalArgumentException e) {
-                    e.printStackTrace();
-                } catch (IllegalAccessException e) {
-                    e.printStackTrace();
-                } catch (InvocationTargetException e) {
+                } catch (SecurityException | NoSuchMethodException | IllegalArgumentException | IllegalAccessException | InvocationTargetException e) {
                     e.printStackTrace();
                 } finally {
                     // 清理资源
