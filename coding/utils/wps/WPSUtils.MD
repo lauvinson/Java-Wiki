@@ -170,9 +170,8 @@ public class WPSUtils<T> {
         while (it.hasNext()) {
             index++;
             row = sheet.createRow(index);
-            t = (T) it.next();
+            t = it.next();
             for (int i = 0; i < sortedColumn.size(); i++) {
-                field = sortedColumn.get(i).getValue();
                 cell = row.createCell(i);
                 cell.setCellStyle(style2);
                 try {
@@ -225,8 +224,6 @@ public class WPSUtils<T> {
                     }
                 } catch (SecurityException | NoSuchMethodException | IllegalArgumentException | IllegalAccessException | InvocationTargetException e) {
                     e.printStackTrace();
-                } finally {
-                    // 清理资源
                 }
             }
         }
